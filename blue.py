@@ -59,6 +59,32 @@ for channel in channels:
     else:
         irc.send('JOIN {}\r\n'.format(channel))
 
+for channel in channels:
+    userlist = {channel: []}
+
+def gen_userlist(channel, result):
+    for item in result:
+        user = item.split()
+        user = user[1:]
+        userlist[channel].extend(user)
+
+## add user on JOIN
+def add_user(channel, user):
+    print 'Adding {} to {}\n'.format(user, channel)
+    userlist[channel].extend(user)
+
+## delete user on QUIT
+def del_user(channel, user):
+    print 'Removing {} from {}\n'.format(user, channel)
+    userlist[channel].remove(user)
+
+## logging function
+def logger(channel, log_message):
+    logfile = HOME + '/.blue/' + channel + '.log'
+    with open(logfile, 'a') as fh_:
+        fh_.write(log_message)
+
+
 while True:
     try:
         if SSL:
@@ -68,37 +94,15 @@ while True:
 
         ## generate userlist
         for channel in channels:
-            userlist = {channel: []}
             name_regex = nickname + ' = ' + channel + ':?(.*)'
             names = re.compile(name_regex)
 
-            result = names.findall(stream)
+        result = names.findall(stream)
 
-            if result:
-                for item in result:
-                    user = item.split()
-                    user = user[1:]
-                    userlist[channel].extend(user)
-
+        if result:
             print userlist
-
-        ## add user on JOIN
-        def add_user(channel, user):
-            ## debug output
-            print 'Adding {} to {}\n'.format(user, channel)
-            userlist[channel].extend(user)
-
-        ## delete user on QUIT
-        def del_user(channel, user):
-            ## debug output
-            print 'Removing {} from {}\n'.format(user, channel)
-            userlist[channel].remove(user)
-
-        ## logging function
-        def logger(channel, log_message):
-            logfile = HOME + '/.blue/' + channel + '.log'
-            with open(logfile, 'a') as fh_:
-                fh_.write(log_message)
+            print channel, result
+            gen_userlist(channel, result)
 
         ## capture messages; send to logger
         if re.match(r'^:(.*)!~?.*@.*\sPRIVMSG\s(#[\w-]+[^:])\s(:.*)$', stream):
@@ -119,7 +123,7 @@ while True:
             channel = component.groups(1)[2].strip()
             log_message = '{} {} {} ({}) has joined {}\n'.format(timestamp, channel, user, useraddr, channel)
             logger(channel, log_message)
-            #add_user(channel, user)
+            add_user(channel, user)
 
         # capture quit messages; send to logger
         if re.match(r'^:(.*)!(~?.*@.*)\sQUIT\s(:.*)', stream):
@@ -128,9 +132,12 @@ while True:
             user = component.groups(1)[0].strip()
             useraddr = component.groups(1)[1].strip()
             message = component.groups(1)[2].strip()
+            for channel in channels:
+                if user in userlist[channel]:
+                    channel = channel
             log_message = '{} {} {} ({}) has left {}: {}\n'.format(timestamp, channel, user, useraddr, channel, message)
             logger(channel, log_message)
-            #del_user(channel, user)
+            del_user(channel, user)
 
         ## keepalive ping/pong
         if re.match(r'^PING (.*)$', stream):
