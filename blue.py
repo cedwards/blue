@@ -59,13 +59,38 @@ for channel in channels:
     else:
         irc.send('JOIN {}\r\n'.format(channel))
 
-
 while True:
     try:
         if SSL:
             stream = secure.read()
         else:
-            stream = irc.recv(2048)
+            stream = irc.recv(4096)
+
+        ## generate userlist
+        for channel in channels:
+            userlist = {channel: []}
+            name_regex = nickname + ' = ' + channel + ':?(.*)'
+            names = re.compile(name_regex)
+
+            result = names.findall(stream)
+
+            if result:
+                for item in result:
+                    user = item.split()
+                    user = user[1:]
+                    userlist[channel].extend(user)
+
+        ## add user on JOIN
+        def add_user(channel, user):
+            ## debug output
+            print 'Adding {} to {}\n'.format(user, channel)
+            userlist[channel].extend(user)
+
+        ## delete user on QUIT
+        def del_user(channel, user):
+            ## debug output
+            print 'Removing {} from {}\n'.format(user, channel)
+            userlist[channel].remove(user)
 
         ## logging function
         def logger(channel, log_message):
@@ -77,21 +102,36 @@ while True:
         if re.match(r'^:(.*)!~?.*@.*\sPRIVMSG\s(#[\w-]+[^:])\s(:.*)$', stream):
             component = re.match(r'^:(.*)!~?.*@.*\sPRIVMSG\s(#[\w-]+[^:])\s(:.*)$', stream)
             timestamp = datetime.now().strftime('%Y-%m-%d %X')
-            sender = component.groups(1)[0].strip()
+            user = component.groups(1)[0].strip()
             channel = component.groups(1)[1].strip()
             message = component.groups(1)[2].strip()[1:]
-            log_message = '{} {} {}: {}\n'.format(timestamp, channel, sender, message)
+            log_message = '{} {} {}: {}\n'.format(timestamp, channel, user, message)
             logger(channel, log_message)
 
         ## capture join messages; send to logger
         if re.match(r'^:(.*)!(~?.*@.*)\sJOIN\s(#[\w-]+)', stream):
             component = re.match(r'^:(.*)!(~?.*@.*)\sJOIN\s(#[\w-]+)', stream)
             timestamp = datetime.now().strftime('%Y-%m-%d %X')
-            sender = component.groups(1)[0].strip()
+            user = component.groups(1)[0].strip()
             useraddr = component.groups(1)[1].strip()
             channel = component.groups(1)[2].strip()
-            log_message = '{} {} {} ({}) has joined {}\n'.format(timestamp, channel, sender, useraddr, channel)
+            log_message = '{} {} {} ({}) has joined {}\n'.format(timestamp, channel, user, useraddr, channel)
             logger(channel, log_message)
+            add_user(channel, user)
+
+        # capture quit messages; send to logger
+        if re.match(r'^:(.*)!(~?.*@.*)\sQUIT\s(:.*)', stream):
+            component = re.match(r'^:(.*)!(~?.*@.*)\sQUIT\s(:.*)', stream)
+            timestamp = datetime.now().strftime('%Y-%m-%d %X')
+            user = component.groups(1)[0].strip()
+            useraddr = component.groups(1)[1].strip()
+            message = component.groups(1)[2].strip()
+            for channel in channels:
+                if user in userlist[channel]:
+                    channel = userlist[channel][0] 
+            log_message = '{} {} {} ({}) has left {}: {}\n'.format(timestamp, channel, user, useraddr, channel, message)
+            logger(channel, log_message)
+            del_user(channel, user)
 
         ## keepalive ping/pong
         if re.match(r'^PING (.*)$', stream):
