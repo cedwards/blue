@@ -96,13 +96,12 @@ while True:
         for channel in channels:
             name_regex = nickname + ' = ' + channel + ':?(.*)'
             names = re.compile(name_regex)
+            result = names.findall(stream)
 
-        result = names.findall(stream)
-
-        if result:
-            print userlist
-            print channel, result
-            gen_userlist(channel, result)
+            if result:
+                print userlist
+                print channel, result
+                gen_userlist(channel, result)
 
         ## capture messages; send to logger
         if re.match(r'^:(.*)!~?.*@.*\sPRIVMSG\s(#[\w-]+[^:])\s(:.*)$', stream):
@@ -123,7 +122,7 @@ while True:
             channel = component.groups(1)[2].strip()
             log_message = '{} {} {} ({}) has joined {}\n'.format(timestamp, channel, user, useraddr, channel)
             logger(channel, log_message)
-            add_user(channel, user)
+            #add_user(channel, user)
 
         # capture quit messages; send to logger
         if re.match(r'^:(.*)!(~?.*@.*)\sQUIT\s(:.*)', stream):
@@ -132,12 +131,9 @@ while True:
             user = component.groups(1)[0].strip()
             useraddr = component.groups(1)[1].strip()
             message = component.groups(1)[2].strip()
-            for channel in channels:
-                if user in userlist[channel]:
-                    channel = channel
             log_message = '{} {} {} ({}) has left {}: {}\n'.format(timestamp, channel, user, useraddr, channel, message)
             logger(channel, log_message)
-            del_user(channel, user)
+            #del_user(channel, user)
 
         ## keepalive ping/pong
         if re.match(r'^PING (.*)$', stream):
