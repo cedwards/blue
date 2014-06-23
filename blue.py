@@ -34,7 +34,6 @@ except IOError as io:
     print io
     sys.exit()
 
-
 if SSL:
     irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     secure = ssl.wrap_socket(irc,
@@ -58,6 +57,12 @@ for channel in channels:
         secure.write('JOIN {}\r\n'.format(channel))
     else:
         irc.send('JOIN {}\r\n'.format(channel))
+
+
+## compile regex for userlist
+for channel in channels:
+    name_regex = nickname + ' = ' + channel + ':?(.*)'
+    names = re.compile(name_regex)
 
 
 def gen_userlist(channel, result):
@@ -88,10 +93,12 @@ def logger(channel, log_message):
         fh_.write(log_message)
 
 
-## generate userlist
-for channel in channels:
-    name_regex = nickname + ' = ' + channel + ':?(.*)'
-    names = re.compile(name_regex)
+def contains(user, userlist):
+    for line in userlist:
+        if user == line:
+            return True
+        return False
+
 
 while True:
     try:
@@ -135,9 +142,11 @@ while True:
             user = component.groups(1)[0].strip()
             useraddr = component.groups(1)[1].strip()
             message = component.groups(1)[2].strip()
+            for channel in channels:
+                if contains(user, userlist[channel]):
+                    del_user(channel, user)
             log_message = '{} {} {} ({}) has left {}: {}\n'.format(timestamp, channel, user, useraddr, channel, message)
             logger(channel, log_message)
-            del_user(channel, user)
 
         ## keepalive ping/pong
         if re.match(r'^PING (.*)$', stream):
