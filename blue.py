@@ -80,6 +80,8 @@ while True:
                     user = user[1:]
                     userlist[channel].extend(user)
 
+            print userlist
+
         ## add user on JOIN
         def add_user(channel, user):
             ## debug output
@@ -117,7 +119,7 @@ while True:
             channel = component.groups(1)[2].strip()
             log_message = '{} {} {} ({}) has joined {}\n'.format(timestamp, channel, user, useraddr, channel)
             logger(channel, log_message)
-            add_user(channel, user)
+            #add_user(channel, user)
 
         # capture quit messages; send to logger
         if re.match(r'^:(.*)!(~?.*@.*)\sQUIT\s(:.*)', stream):
@@ -126,12 +128,9 @@ while True:
             user = component.groups(1)[0].strip()
             useraddr = component.groups(1)[1].strip()
             message = component.groups(1)[2].strip()
-            for channel in channels:
-                if user in userlist[channel]:
-                    channel = userlist[channel][0] 
             log_message = '{} {} {} ({}) has left {}: {}\n'.format(timestamp, channel, user, useraddr, channel, message)
             logger(channel, log_message)
-            del_user(channel, user)
+            #del_user(channel, user)
 
         ## keepalive ping/pong
         if re.match(r'^PING (.*)$', stream):
