@@ -59,55 +59,42 @@ for channel in channels:
         irc.send('JOIN {}\r\n'.format(channel))
 
 
-## add user on JOIN
-def add_user(channel, user):
-    print 'Adding {} to {}\n'.format(user, channel)
-    try:
-        userlist[channel].extend(user)
-    except KeyError:
-        userlist = {channel: [user]}
-    except UnboundLocalError:
-        userlist = {channel: []}
+class Userlist:
+    def __init__(self):
+        self.userlist = {}
+        print 'Initializing...'
 
+    def add_user(self, channel, user):
+        if not user in self.userlist[channel]:
+            print 'Adding {} to {}\n'.format(user, channel)
+            self.userlist[channel].extend(user)
+        else:
+            print 'User {} already in list {}'.format(user, channel)
 
-## delete user on QUIT
-def del_user(channel, user):
-    print 'Removing {} from {}\n'.format(user, channel)
-    try:
-        userlist[channel].remove(user)
-    except KeyError:
-        userlist = {channel: [user]}
-        userlist[channel].remove(user)
-    except UnboundLocalError:
-        userlist = {channel: []}
+    def del_user(self, channel, user):
+        if user in self.userlist[channel]:
+            print 'Removing {} from {}\n'.format(user, channel)
+            self.userlist[channel].remove(user)
+        else:
+            print 'Expected {} in {}; not found'.format(user, channel)
 
+    def logger(self, channel, log_message):
+        logfile = HOME + '/.blue/' + channel + '.log'
+        with open(logfile, 'a') as fh_:
+            fh_.write(log_message)
 
-## logging function
-def logger(channel, log_message):
-    logfile = HOME + '/.blue/' + channel + '.log'
-    with open(logfile, 'a') as fh_:
-        fh_.write(log_message)
+    def populate(self, channel, name_result):
+        if channel in self.userlist:
+            for item in name_result:
+                user = item.split()
+                user = user[1:]
+                self.userlist[channel].extend(user)
+        else:
+            self.userlist[channel] = []
+            self.populate(channel, name_result)
 
-
-def find_user(user, names):
-    for line in names:
-        if user in line:
-            return True
-        return False
-
-
-def gen_userlist(channel, name_result):
-    try:
-        for item in name_result:
-            user = item.split()
-            user = user[1:]
-            userlist[channel].extend(user)
-    except KeyError:
-        userlist = {channel: []}
-        gen_userlist(channel, name_result)
-    except UnboundLocalError:
-        userlist = {channel: []}
-        
+## initialize class
+users = Userlist()
 
 while True:
     try:
@@ -123,8 +110,8 @@ while True:
         
             name_result = name.findall(stream)
             if name_result:
-                print 'Populating userlist for {}\n'.format(channel)
-                gen_userlist(channel, name_result)
+                print 'Populating userlist for {}'.format(channel)
+                users.populate(channel, name_result)
 
         ## capture messages; send to logger
         if re.match(r'^:(.*)!~?.*@.*\sPRIVMSG\s(#[\w-]+[^:])\s(:.*)$', stream):
@@ -134,7 +121,7 @@ while True:
             channel = component.groups(1)[1].strip()
             message = component.groups(1)[2].strip()[1:]
             log_message = '{} {} {}: {}\n'.format(timestamp, channel, user, message)
-            logger(channel, log_message)
+            users.logger(channel, log_message)
 
         ## capture join messages; send to logger
         if re.match(r'^:(.*)!(~?.*@.*)\sJOIN\s(#[\w-]+)', stream):
@@ -144,32 +131,23 @@ while True:
             useraddr = component.groups(1)[1].strip()
             channel = component.groups(1)[2].strip()
             log_message = '{} {} {} ({}) has joined {}\n'.format(timestamp, channel, user, useraddr, channel)
-            logger(channel, log_message)
             if nickname not in user:
-                try:
-                    if not find_user(user, userlist[channel]):
-                        add_user(channel, user)
-                except KeyError:
-                    add_user(channel, user)
-                except NameError:
-                    userlist = {channel: []}
+                users.add_user(channel, user)
+                users.logger(channel, log_message)
 
-        # capture quit messages; send to logger
+        ## capture quit messages; send to logger
         if re.match(r'^:(.*)!(~?.*@.*)\sQUIT\s(:.*)', stream):
             component = re.match(r'^:(.*)!(~?.*@.*)\sQUIT\s(:.*)', stream)
             timestamp = datetime.now().strftime('%Y-%m-%d %X')
             user = component.groups(1)[0].strip()
             useraddr = component.groups(1)[1].strip()
             message = component.groups(1)[2].strip()
-            log_message = '{} {} {} ({}) has left {}: {}\n'.format(timestamp, channel, user, useraddr, channel, message)
-            logger(channel, log_message)
-            try:
-                if find_user(user, userlist[channel]):
-                    del_user(channel, user)
-            except KeyError:
-                del_user(channel, user)
-            except NameError:
-                userlist = {channel: []}
+            for channel in channels:
+                if user in users.userlist[channel]:
+                    group = channel
+                    log_message = '{} {} {} ({}) has left {}: {}\n'.format(timestamp, group, user, useraddr, group, message)
+                    users.del_user(group, user)
+                    users.logger(group, log_message)
 
         ## keepalive ping/pong
         if re.match(r'^PING (.*)$', stream):
@@ -179,7 +157,6 @@ while True:
                 secure.write('PONG :{}\r\n'.format(keepalive))
             else:
                 irc.send('PONG :{}\r\n'.format(keepalive))
-                print userlist
 
     except IOError:
         print "Unable to open {}".format(logfile)
