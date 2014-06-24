@@ -62,18 +62,15 @@ for channel in channels:
 class Userlist:
     def __init__(self):
         self.userlist = {}
-        print 'Initializing...'
 
     def add_user(self, channel, user):
         if not user in self.userlist[channel]:
-            print 'Adding {} to {}\n'.format(user, channel)
-            self.userlist[channel].extend(user)
+            self.userlist[channel].append(user)
         else:
             print 'User {} already in list {}'.format(user, channel)
 
     def del_user(self, channel, user):
         if user in self.userlist[channel]:
-            print 'Removing {} from {}\n'.format(user, channel)
             self.userlist[channel].remove(user)
         else:
             print 'Expected {} in {}; not found'.format(user, channel)
@@ -110,7 +107,6 @@ while True:
         
             name_result = name.findall(stream)
             if name_result:
-                print 'Populating userlist for {}'.format(channel)
                 users.populate(channel, name_result)
 
         ## capture messages; send to logger
