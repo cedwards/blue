@@ -55,8 +55,10 @@ else:
 for channel in channels:
     if SSL:
         secure.write('JOIN {}\r\n'.format(channel))
+        userlist = {channel: []}
     else:
         irc.send('JOIN {}\r\n'.format(channel))
+        userlist = {channel: []}
 
 
 ## compile regex for userlist
@@ -75,15 +77,13 @@ def gen_userlist(channel, result):
 ## add user on JOIN
 def add_user(channel, user):
     print 'Adding {} to {}\n'.format(user, channel)
-    if not user in userlist[channel]:
-        userlist[channel].extend(user)
+    userlist[channel].extend(user)
 
 
 ## delete user on QUIT
 def del_user(channel, user):
     print 'Removing {} from {}\n'.format(user, channel)
-    if user in userlist[channel]:
-        userlist[channel].remove(user)
+    userlist[channel].remove(user)
 
 
 ## logging function
@@ -93,9 +93,9 @@ def logger(channel, log_message):
         fh_.write(log_message)
 
 
-def contains(user, userlist):
-    for line in userlist:
-        if user == line:
+def find_user(user, names):
+    for line in names:
+        if user in line:
             return True
         return False
 
@@ -108,7 +108,6 @@ while True:
             stream = irc.recv(4096)
 
         result = names.findall(stream)
-        userlist = {channel: []}
         if result:
             gen_userlist(channel, result)
 
@@ -131,8 +130,8 @@ while True:
             channel = component.groups(1)[2].strip()
             log_message = '{} {} {} ({}) has joined {}\n'.format(timestamp, channel, user, useraddr, channel)
             logger(channel, log_message)
-            ## gets around a race condition
-            if not user == nickname:
+            print userlist
+            if not find_user(user, userlist[channel]):
                 add_user(channel, user)
 
         # capture quit messages; send to logger
@@ -142,9 +141,9 @@ while True:
             user = component.groups(1)[0].strip()
             useraddr = component.groups(1)[1].strip()
             message = component.groups(1)[2].strip()
-            for channel in channels:
-                if contains(user, userlist[channel]):
-                    del_user(channel, user)
+            print userlist
+            if find_user(user, userlist[channel]):
+                del_user(channel, user)
             log_message = '{} {} {} ({}) has left {}: {}\n'.format(timestamp, channel, user, useraddr, channel, message)
             logger(channel, log_message)
 
