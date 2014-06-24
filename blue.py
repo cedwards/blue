@@ -55,35 +55,31 @@ else:
 for channel in channels:
     if SSL:
         secure.write('JOIN {}\r\n'.format(channel))
-        userlist = {channel: []}
     else:
         irc.send('JOIN {}\r\n'.format(channel))
-        userlist = {channel: []}
-
-
-## compile regex for userlist
-for channel in channels:
-    name_regex = nickname + ' = ' + channel + ':?(.*)'
-    names = re.compile(name_regex)
-
-
-def gen_userlist(channel, result):
-    for item in result:
-        user = item.split()
-        user = user[1:]
-        userlist[channel].extend(user)
 
 
 ## add user on JOIN
 def add_user(channel, user):
     print 'Adding {} to {}\n'.format(user, channel)
-    userlist[channel].extend(user)
+    try:
+        userlist[channel].extend(user)
+    except KeyError:
+        userlist = {channel: [user]}
+    except UnboundLocalError:
+        userlist = {channel: []}
 
 
 ## delete user on QUIT
 def del_user(channel, user):
     print 'Removing {} from {}\n'.format(user, channel)
-    userlist[channel].remove(user)
+    try:
+        userlist[channel].remove(user)
+    except KeyError:
+        userlist = {channel: [user]}
+        userlist[channel].remove(user)
+    except UnboundLocalError:
+        userlist = {channel: []}
 
 
 ## logging function
@@ -100,6 +96,19 @@ def find_user(user, names):
         return False
 
 
+def gen_userlist(channel, name_result):
+    try:
+        for item in name_result:
+            user = item.split()
+            user = user[1:]
+            userlist[channel].extend(user)
+    except KeyError:
+        userlist = {channel: []}
+        gen_userlist(channel, name_result)
+    except UnboundLocalError:
+        userlist = {channel: []}
+        
+
 while True:
     try:
         if SSL:
@@ -107,9 +116,15 @@ while True:
         else:
             stream = irc.recv(4096)
 
-        result = names.findall(stream)
-        if result:
-            gen_userlist(channel, result)
+        ## compile regex for userlist
+        for channel in channels:
+            name_regex = nickname + ' = ' + channel + ':?(.*)'
+            name = re.compile(name_regex)
+        
+            name_result = name.findall(stream)
+            if name_result:
+                print 'Populating userlist for {}\n'.format(channel)
+                gen_userlist(channel, name_result)
 
         ## capture messages; send to logger
         if re.match(r'^:(.*)!~?.*@.*\sPRIVMSG\s(#[\w-]+[^:])\s(:.*)$', stream):
@@ -130,9 +145,14 @@ while True:
             channel = component.groups(1)[2].strip()
             log_message = '{} {} {} ({}) has joined {}\n'.format(timestamp, channel, user, useraddr, channel)
             logger(channel, log_message)
-            print userlist
-            if not find_user(user, userlist[channel]):
-                add_user(channel, user)
+            if nickname not in user:
+                try:
+                    if not find_user(user, userlist[channel]):
+                        add_user(channel, user)
+                except KeyError:
+                    add_user(channel, user)
+                except NameError:
+                    userlist = {channel: []}
 
         # capture quit messages; send to logger
         if re.match(r'^:(.*)!(~?.*@.*)\sQUIT\s(:.*)', stream):
@@ -141,11 +161,15 @@ while True:
             user = component.groups(1)[0].strip()
             useraddr = component.groups(1)[1].strip()
             message = component.groups(1)[2].strip()
-            print userlist
-            if find_user(user, userlist[channel]):
-                del_user(channel, user)
             log_message = '{} {} {} ({}) has left {}: {}\n'.format(timestamp, channel, user, useraddr, channel, message)
             logger(channel, log_message)
+            try:
+                if find_user(user, userlist[channel]):
+                    del_user(channel, user)
+            except KeyError:
+                del_user(channel, user)
+            except NameError:
+                userlist = {channel: []}
 
         ## keepalive ping/pong
         if re.match(r'^PING (.*)$', stream):
@@ -155,6 +179,7 @@ while True:
                 secure.write('PONG :{}\r\n'.format(keepalive))
             else:
                 irc.send('PONG :{}\r\n'.format(keepalive))
+                print userlist
 
     except IOError:
         print "Unable to open {}".format(logfile)
